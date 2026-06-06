@@ -1,0 +1,12 @@
+int x = 10;
+float y = 3.14;
+bool activo = true;
+string nombre = "Juan";
+
+if (x > 5) {
+    x = x + 1;
+}
+
+while (x < 20) {
+    x = x + 2;
+}

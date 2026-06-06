@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Analizador Léxico - FLEX</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    background-color: #f0f0f0;
+    margin: 0;
+    padding: 20px;
+  }
+
+  h1 {
+    text-align: center;
+    color: #333;
+    font-size: 22px;
+    margin-bottom: 5px;
+  }
+
+  p.subtitulo {
+    text-align: center;
+    color: #666;
+    font-size: 13px;
+    margin-bottom: 20px;
+  }
+
+  .contenedor {
+    max-width: 850px;
+    margin: 0 auto;
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    border: 1px solid #ccc;
+  }
+
+  label {
+    display: block;
+    font-weight: bold;
+    margin-bottom: 5px;
+    color: #333;
+    font-size: 14px;
+  }
+
+  textarea {
+    width: 100%;
+    height: 150px;
+    font-family: Courier New, monospace;
+    font-size: 13px;
+    padding: 10px;
+    border: 1px solid #aaa;
+    border-radius: 4px;
+    resize: vertical;
+    box-sizing: border-box;
+  }
+
+  .botones {
+    margin: 10px 0;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  button {
+    padding: 8px 16px;
+    font-size: 13px;
+    border: 1px solid #888;
+    border-radius: 4px;
+    background-color: #e8e8e8;
+    cursor: pointer;
+  }
+
+  button:hover {
+    background-color: #d0d0d0;
+  }
+
+  button.principal {
+    background-color: #4a7fc1;
+    color: white;
+    border-color: #3a6aaa;
+  }
+
+  button.principal:hover {
+    background-color: #3a6aaa;
+  }
+
+  hr {
+    border: none;
+    border-top: 1px solid #ddd;
+    margin: 16px 0;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    margin-top: 10px;
+  }
+
+  th {
+    background-color: #4a7fc1;
+    color: white;
+    padding: 7px 10px;
+    text-align: left;
+  }
+
+  td {
+    padding: 6px 10px;
+    border-bottom: 1px solid #eee;
+  }
+
+  tr:nth-child(even) td {
+    background-color: #f9f9f9;
+  }
+
+  .tipo-badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: bold;
+  }
+
+  .t-kw    { background: #dde0ff; color: #3a3aaa; }
+  .t-id    { background: #d6f5ec; color: #1a7a55; }
+  .t-num   { background: #fff3cd; color: #856404; }
+  .t-op    { background: #fde8e8; color: #a82020; }
+  .t-str   { background: #e8f5e9; color: #2e7d32; }
+  .t-pun   { background: #eeeeee; color: #444; }
+  .t-err   { background: #f8d7da; color: #721c24; }
+
+  .stats {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+  }
+
+  .stat-item {
+    background: #f5f5f5;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 6px 12px;
+    font-size: 12px;
+    color: #444;
+    text-align: center;
+  }
+
+  .stat-item span {
+    display: block;
+    font-size: 18px;
+    font-weight: bold;
+    color: #333;
+  }
+
+  .error-msg {
+    color: #c0392b;
+    font-size: 13px;
+    margin-top: 8px;
+    font-family: Courier New, monospace;
+  }
+
+  #resultado-vacio {
+    color: #999;
+    font-size: 13px;
+    text-align: center;
+    padding: 20px;
+  }
+</style>
+</head>
+<body>
+
+<div class="contenedor">
+  <h1>Analizador Léxico</h1>
+  <p class="subtitulo">Implementado con FLEX — Compiladores I</p>
+
+  <label for="codigo">Ingresa el código a analizar:</label>
+  <textarea id="codigo" placeholder="Ejemplo: int x = 5 + 3;"></textarea>
+
+  <div class="botones">
+    <button class="principal" onclick="analizar()">Analizar</button>
+    <button onclick="limpiar()">Limpiar</button>
+    <button onclick="cargarEjemplo()">Cargar ejemplo</button>
+  </div>
+
+  <hr>
+
+  <div id="errores"></div>
+
+  <div id="resultado-vacio">Presiona "Analizar" para ver los tokens.</div>
+
+  <div id="resultado" style="display:none">
+    <label>Tokens encontrados:</label>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Lexema</th>
+          <th>Tipo de token</th>
+          <th>Línea</th>
+        </tr>
+      </thead>
+      <tbody id="tabla-body"></tbody>
+    </table>
+
+    <div class="stats" id="stats"></div>
+  </div>
+</div>
+
+<script>
+const PALABRAS_CLAVE = new Set([
+  'if','else','while','for','do','return','break','continue',
+  'int','float','double','char','bool','void','string',
+  'true','false','null','const','static','class','new'
+]);
+
+function tokenizar(src) {
+  const tokens = [];
+  let i = 0, linea = 1;
+
+  while (i < src.length) {
+    // saltar espacios
+    if (src[i] === '\n') { linea++; i++; continue; }
+    if (/\s/.test(src[i])) { i++; continue; }
+
+    // comentario //
+    if (src[i] === '/' && src[i+1] === '/') {
+      while (i < src.length && src[i] !== '\n') i++;
+      continue;
+    }
+
+    // string
+    if (src[i] === '"') {
+      let j = i++; 
+      while (i < src.length && src[i] !== '"' && src[i] !== '\n') i++;
+      if (src[i] === '"') i++;
+      tokens.push({ tipo:'STRING', lexema: src.slice(j, i), linea });
+      continue;
+    }
+
+    // float antes que entero
+    let fm = src.slice(i).match(/^[0-9]+\.[0-9]+/);
+    if (fm) {
+      tokens.push({ tipo:'FLOAT', lexema: fm[0], linea });
+      i += fm[0].length; continue;
+    }
+
+    // entero
+    let im = src.slice(i).match(/^[0-9]+/);
+    if (im) {
+      tokens.push({ tipo:'ENTERO', lexema: im[0], linea });
+      i += im[0].length; continue;
+    }
+
+    // identificador o palabra clave
+    let idm = src.slice(i).match(/^[a-zA-Z_][a-zA-Z0-9_]*/);
+    if (idm) {
+      const v = idm[0];
+      const tipo = PALABRAS_CLAVE.has(v) ? 'KEYWORD' : 'IDENTIFICADOR';
+      tokens.push({ tipo, lexema: v, linea });
+      i += v.length; continue;
+    }
+
+    // operadores dobles
+    let opm = src.slice(i).match(/^(==|!=|<=|>=|&&|\|\||[+\-*\/=<>!%])/);
+    if (opm) {
+      tokens.push({ tipo:'OPERADOR', lexema: opm[0], linea });
+      i += opm[0].length; continue;
+    }
+
+    // puntuacion
+    if ('(){}[];,.'.includes(src[i])) {
+      tokens.push({ tipo:'PUNTUACION', lexema: src[i], linea });
+      i++; continue;
+    }
+
+    // error
+    tokens.push({ tipo:'ERROR', lexema: src[i], linea });
+    i++;
+  }
+  return tokens;
+}
+
+function claseColor(tipo) {
+  const m = {
+    KEYWORD:'t-kw', IDENTIFICADOR:'t-id',
+    ENTERO:'t-num', FLOAT:'t-num',
+    OPERADOR:'t-op', STRING:'t-str',
+    PUNTUACION:'t-pun', ERROR:'t-err'
+  };
+  return m[tipo] || 't-pun';
+}
+
+function analizar() {
+  const src = document.getElementById('codigo').value;
+  if (!src.trim()) {
+    document.getElementById('resultado-vacio').textContent = 'Escribe algo primero.';
+    return;
+  }
+
+  const tokens = tokenizar(src);
+  const errores = tokens.filter(t => t.tipo === 'ERROR');
+
+  // errores
+  const divErr = document.getElementById('errores');
+  if (errores.length > 0) {
+    divErr.innerHTML = errores.map(e =>
+      `<div class="error-msg">⚠ Error léxico: carácter no reconocido '${e.lexema}' en línea ${e.linea}</div>`
+    ).join('');
+  } else {
+    divErr.innerHTML = '';
+  }
+
+  // tabla
+  const tbody = document.getElementById('tabla-body');
+  tbody.innerHTML = '';
+  tokens.forEach((t, idx) => {
+    const cls = claseColor(t.tipo);
+    tbody.innerHTML += `<tr>
+      <td>${idx + 1}</td>
+      <td><code>${escHtml(t.lexema)}</code></td>
+      <td><span class="tipo-badge ${cls}">${t.tipo}</span></td>
+      <td>${t.linea}</td>
+    </tr>`;
+  });
+
+  // stats
+  const conteo = {};
+  tokens.forEach(t => { conteo[t.tipo] = (conteo[t.tipo] || 0) + 1; });
+  const statsDiv = document.getElementById('stats');
+  statsDiv.innerHTML = `<div class="stat-item"><span>${tokens.length}</span>Total</div>`;
+  Object.entries(conteo).forEach(([tipo, n]) => {
+    statsDiv.innerHTML += `<div class="stat-item"><span>${n}</span>${tipo}</div>`;
+  });
+
+  document.getElementById('resultado-vacio').style.display = 'none';
+  document.getElementById('resultado').style.display = 'block';
+}
+
+function limpiar() {
+  document.getElementById('codigo').value = '';
+  document.getElementById('resultado').style.display = 'none';
+  document.getElementById('resultado-vacio').style.display = 'block';
+  document.getElementById('resultado-vacio').textContent = 'Presiona "Analizar" para ver los tokens.';
+  document.getElementById('errores').innerHTML = '';
+}
+
+function cargarEjemplo() {
+  document.getElementById('codigo').value =
+`int x = 10;
+float y = 3.14;
+if (x > 5) {
+    x = x + 1;
+}
+string nombre = "Juan";
+bool activo = true;`;
+  analizar();
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+</body>
+</html>
